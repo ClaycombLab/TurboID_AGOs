@@ -1,0 +1,86 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+library(dplyr) 
+library(ggplot2)
+library(ggsignif)
+library(ggpubr)
+library(reshape2)
+library(data.table)
+library(rstatix)
+library(tidyr)
+
+```
+
+integrated density is mean gray * area
+```{r}
+default_directory <- "C:\\Users\\Samantha\\Claycomb Lab Dropbox\\Claycomb Lab Team Folder\\Julie Claycomb\\TURBO ID MANUSCRIPT 04_2026\\Primary Data\\WAGO-4_Imaging\\withROIs"
+
+
+df <- data.frame()
+
+# Get a list of all Measurements.txt files in the directory
+file_list <- list.files(default_directory, pattern = "Measurements\\.txt$", full.names = TRUE, recursive = TRUE)
+
+# Loop through each file
+for (file in file_list) {
+  data <- fread(file, header = TRUE)
+
+  # Extract Strain, Treatment, Worm from the file name by splitting on "_"
+  # and reading from the end, since Strain can contain an underscore
+  file_name <- basename(file)
+  file_stem <- sub("\\.txt$", "", file_name)
+  parts <- strsplit(file_stem, "_")[[1]]
+  n <- length(parts)
+
+  # Last token is "Measurements", second-to-last is Worm, third-to-last is Treatment
+  worm <- parts[n - 1]
+  treatment <- parts[n - 2]
+  strain <- paste(parts[1:(n - 3)], collapse = "_")
+
+  data$Strain <- strain
+  data$Treatment <- treatment
+  data$Worm <- worm
+
+  df <- rbind(df, data)
+}
+
+IntDenByPair <- df %>%
+  mutate(Region = ifelse(Label == "Inner", "Inner", "XOR")) %>%
+  group_by(Strain, Treatment, Worm, Pair, Region) %>%
+  summarise(totalRawIntDen = sum(RawIntDen, na.rm = TRUE),
+            totalArea = sum(Area, na.rm = TRUE),
+            .groups = "drop") %>%
+  mutate(density = totalRawIntDen / totalArea) %>%
+  select(-totalRawIntDen, -totalArea) %>%
+  pivot_wider(
+    names_from = Region,
+    values_from = density
+  ) %>%
+  mutate(Ratio = Inner / XOR)
+
+# Mean Ratio per worm (averaging across all 10 ROI pairs within that worm)
+IntDenMeanByWorm <- IntDenByPair %>%
+  group_by(Strain, Treatment, Worm) %>%
+  summarise(meanRatio = mean(Ratio, na.rm = TRUE),
+            .groups = "drop")
+
+# Overall mean Ratio per Strain × Treatment (averaging across worms)
+IntDenMeanByTreatment <- IntDenMeanByWorm %>%
+  group_by(Strain, Treatment) %>%
+  summarise(overallMeanRatio = mean(meanRatio, na.rm = TRUE),
+            sd_ratio = sd(meanRatio, na.rm = TRUE),
+            n = n(),
+            sem_ratio = sd_ratio / sqrt(n),
+            .groups = "drop")
+```
+
+
+

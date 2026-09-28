@@ -1,0 +1,159 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+library(dplyr) 
+library(ggplot2)
+library(ggsignif)
+library(ggpubr)
+library(reshape2)
+library(data.table)
+library(rstatix)
+library(tidyr)
+
+```
+
+
+```{r}
+meas_directory <- "C:\\Users\\Samantha\\Claycomb Lab Dropbox\\Claycomb Lab Team Folder\\Julie Claycomb\\TURBO ID MANUSCRIPT 04_2026\\Primary Data\\D2005.4\\Azide\\"
+
+
+# Initialize empty dataframes with column names
+df <- data.frame()
+
+# for the means per well (just in case)
+quants_df <- data.frame(
+  Strain = character(),
+  Range = character(),
+  Timepoint = character(),
+  Treatment = character(),
+  Worm = character(),
+  meanIntDen = numeric()
+)
+
+# Get a list of all txt files in the directory
+file_list <- list.files(
+  meas_directory,
+  pattern = ".txt$",
+  full.names = TRUE,
+  recursive = TRUE
+)
+
+# Loop through each csv file
+for (file in file_list) {
+
+  # Read the contents of the csv file
+  data <- fread(file, header = TRUE)
+
+  # Extract information from the file name by splitting on "_"
+  # and reading from the end, since Strain can contain underscores
+  # Format: strain_treatment_worm_time_range_Measurements.csv
+  file_name <- basename(file)
+  file_stem <- sub("\\.txt$", "", file_name)
+  parts <- strsplit(file_stem, "_")[[1]]
+  n <- length(parts)
+
+  #working backward: Range, Time, Worm, Treatment
+  fluorange <- parts[n]
+  timepoint <- parts[n - 1]
+  worm <- parts[n - 2]
+  treatment <- parts[n - 3]
+  strain <- paste(parts[1:(n - 4)], collapse = "_")
+
+  # Add variables to the data frame
+  data$Strain <- strain
+  data$Treatment <- treatment
+  data$Worm <- worm
+  data$Timepoint <- timepoint
+  data$Range <- fluorange
+
+  # Combine the data with the existing data frame
+  df <- rbind(df, data)
+}
+
+
+```
+
+
+
+
+```{r}
+# Sum RawIntDen (no area normalization) per worm/timepoint
+RawIntDenByTimepoint <- df %>%
+  group_by(Strain, Timepoint, Treatment, Worm, Range) %>%
+  summarise(
+    rawIntensity = sum(RawIntDen, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  pivot_wider(
+    names_from = Range,
+    values_from = rawIntensity
+  )
+
+# Add ratio per worm, and convert Timepoint to numeric
+RatioByTimepoint <- RawIntDenByTimepoint %>%
+  mutate(Ratio = higher / lower,
+         Timepoint = as.numeric(Timepoint))
+
+# Summary stats on Ratio
+ratio_summary <- RatioByTimepoint %>%
+  group_by(Strain, Treatment, Timepoint) %>%
+  summarise(
+    mean_ratio = mean(Ratio, na.rm = TRUE),
+    sd_ratio = sd(Ratio, na.rm = TRUE),
+    n = n(),
+    sem_ratio = sd_ratio / sqrt(n),
+    .groups = "drop"
+  )
+
+ggplot(ratio_summary,
+  aes(
+    x = Timepoint,
+    y = mean_ratio,
+    color = Strain
+  )
+) +
+
+  geom_line(
+    aes(group = interaction(Strain, Treatment), linetype = Treatment),
+    linewidth = 1
+  ) +
+
+  geom_point(size = 2) +
+
+  geom_errorbar(
+    aes(ymin = mean_ratio - sem_ratio, ymax = mean_ratio + sem_ratio,
+        group = interaction(Strain, Treatment)),
+    width = 0.2
+  ) +
+
+  theme_classic(base_family = "sans") +
+
+  theme(
+    axis.text.x = element_text(size = 12),
+    axis.text.y = element_text(size = 12),
+    aspect.ratio = 1
+  ) +
+
+  labs(
+    x = "Timepoint",
+    y = "Higher/Lower Ratio (mean ± SEM)",
+    color = "Strain",
+    linetype = "Treatment"
+  )
+
+ggsave(file = paste0(meas_directory, "RatioByTimepoint_mean_07242026.svg"))
+```
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
