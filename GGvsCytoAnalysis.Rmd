@@ -1,0 +1,91 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+library(dplyr) 
+library(ggplot2)
+library(ggsignif)
+library(ggpubr)
+library(reshape2)
+library(data.table)
+library(rstatix)
+library(tidyr)
+
+```
+
+
+```{r}
+# Define the directory containing your .txt files
+meas_directory <- "C:\\Users\\Samantha\\Claycomb Lab Dropbox\\Claycomb Lab Team Folder\\Sebastian Fuentes\\Grad School\\Reasearch Project\\Images\\GFP_AGO\\TIFFs\\"
+
+# Get a list of all .txt files in the directory
+file_list <- list.files(meas_directory, pattern = ".txt$", full.names = TRUE, recursive=TRUE)
+
+#Initialize empty dataframes with column names
+#for all the data
+df <- data.frame()
+#for the means per well (just in case)
+quants_df <- data.frame(Strain = character(), Range = character(), Rep = character(), meanIntDen = numeric()) 
+
+# Loop through each txt file
+for (file in file_list) {
+  # Read the contents of the txt file
+  data <- fread(file, header = TRUE)
+  
+  # Extract strain and rep from the file name
+  file_name <- basename(file)
+  strain <- gsub("(.*?)_.*", "\\1", file_name)
+  rep <- gsub(".*_(.*?)_.*\\.txt", "\\1", file_name)
+  fluorange <- gsub(".*_(.*?)\\.txt", "\\1", file_name)
+  
+  # Add strain and rep to the data frame
+  data$Strain <- strain
+  data$Rep <- rep
+  data$Range <- fluorange
+  
+  # Combine the data with the existing data frame
+  df <- rbind(df, data)
+  
+  # Calculate mean IntDen per rep
+  meanIntDen <- mean(data$IntDen)
+
+  # Add the mean PercentGFP to quants_df (these are per-well means in case we want the data for something)
+  quants_df <- rbind(quants_df, data.frame(Strain = strain, Rep = rep, Range = fluorange, meanIntDen = meanIntDen))
+  
+}
+
+IntDenByRep = quants_df %>% pivot_wider(names_from=Range, values_from=meanIntDen)
+```
+
+integrated density is mean gray * area
+
+```{r}
+
+
+ggplot(IntDenByRep, aes(x=lower, y=higher, color=Strain)) +
+  geom_point(size=5) +
+  scale_x_continuous(limits=c(0,380)) +
+  scale_y_continuous(limits=c(0,380)) +
+  geom_abline(intercept=0, slope=1, color="darkgray", linetype="dashed")+
+  theme_classic(base_family="sans") +
+  theme(axis.text.x=element_text(size=12),
+        axis.text.y=element_text(size=12),
+        aspect.ratio = 1) +
+  labs(y="Germ granule GFP Integrated Density",
+       x="Cytoplasmic GFP Integrated Density") 
+
+ggsave(file=paste0(meas_directory,"GGvsCytoPlot_04162026.svg"))
+```
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
